@@ -130,14 +130,15 @@ def index():
 if __name__ == "__main__":
     import asyncio
 
-    async def main():
+    async def run():
         await telegram_app.initialize()
         await telegram_app.start()
         await telegram_app.bot.set_webhook(
-            url=f"https://{os.getenv('RAILWAY_STATIC_URL')}/{TOKEN}"
+            url=f"https://sukuk-bot-production.up.railway.app/{TOKEN}"
         )
 
-    asyncio.run(main())
+    asyncio.run(run())
 
-    app.run(host="0.0.0.0", port=PORT)
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
+
 
