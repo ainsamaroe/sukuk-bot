@@ -28,6 +28,8 @@ if not SPREADSHEET_ID:
 
 app = Flask(__name__)
 
+import json
+
 # ================= GOOGLE SHEETS =================
 
 scope = [
@@ -35,13 +37,21 @@ scope = [
     "https://www.googleapis.com/auth/drive",
 ]
 
-creds = Credentials.from_service_account_file(
-    "credentials.json",
+google_creds_json = os.getenv("GOOGLE_CREDENTIALS")
+
+if not google_creds_json:
+    raise ValueError("GOOGLE_CREDENTIALS tidak ditemukan di Environment Variables")
+
+creds_dict = json.loads(google_creds_json)
+
+creds = Credentials.from_service_account_info(
+    creds_dict,
     scopes=scope,
 )
 
 client = gspread.authorize(creds)
 sheet = client.open_by_key(SPREADSHEET_ID).sheet1
+
 
 # ================= TELEGRAM =================
 
@@ -130,3 +140,4 @@ if __name__ == "__main__":
     asyncio.run(main())
 
     app.run(host="0.0.0.0", port=PORT)
+
