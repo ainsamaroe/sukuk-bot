@@ -11,24 +11,12 @@ from telegram.ext import (
 import gspread
 from google.oauth2.service_account import Credentials
 from datetime import datetime
-
-# ================= ENV =================
+import asyncio
 
 TOKEN = os.getenv("TOKEN")
 SPREADSHEET_ID = os.getenv("SPREADSHEET_ID")
-PORT = int(os.environ.get("PORT", 10000))
-
-if not TOKEN:
-    raise ValueError("TOKEN tidak ditemukan di Environment Variables")
-
-if not SPREADSHEET_ID:
-    raise ValueError("SPREADSHEET_ID tidak ditemukan di Environment Variables")
-
-# ================= FLASK =================
 
 app = Flask(__name__)
-
-import json
 
 # ================= GOOGLE SHEETS =================
 
@@ -37,21 +25,13 @@ scope = [
     "https://www.googleapis.com/auth/drive",
 ]
 
-google_creds_json = os.getenv("GOOGLE_CREDENTIALS")
-
-if not google_creds_json:
-    raise ValueError("GOOGLE_CREDENTIALS tidak ditemukan di Environment Variables")
-
-creds_dict = json.loads(google_creds_json)
-
-creds = Credentials.from_service_account_info(
-    creds_dict,
+creds = Credentials.from_service_account_file(
+    "credentials.json",
     scopes=scope,
 )
 
 client = gspread.authorize(creds)
 sheet = client.open_by_key(SPREADSHEET_ID).sheet1
-
 
 # ================= TELEGRAM =================
 
@@ -67,10 +47,8 @@ def clean_number(text):
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "📌 Kirim data seperti:\n\n"
-        "PT Nusa, Proyek A, 20-06-2024, 12, 15, 5000000\n\n"
-        "Format:\n"
-        "Perusahaan, Proyek, Tanggal, Tenor(bulan), ROI(%), Investasi"
+        "Kirim data seperti:\n\n"
+        "PT Nusa, Proyek A, 20-06-2024, 12, 15, 5000000"
     )
 
 
@@ -98,46 +76,31 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             round(proyeksi_margin, 2)
         ])
 
-        await update.message.reply_text("✅ Data berhasil disimpan ke Google Sheets")
+        await update.message.reply_text("✅ Data berhasil disimpan")
 
     except Exception as e:
         print("ERROR:", e)
-        await update.message.reply_text("❌ Format salah.\nGunakan format:\nPT Nusa, Proyek A, 20-06-2024, 12, 15, 5000000")
+        await update.message.reply_text("❌ Format salah")
 
 
-# ================= REGISTER HANDLER =================
-
-telegram_app.add_handler(CommandHandler("start", start))
-telegram_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
-
-
-# ================= WEBHOOK ROUTE =================
+# ================= WEBHOOK =================
 
 @app.route(f"/{TOKEN}", methods=["POST"])
-async def webhook():
+def webhook():
     update = Update.de_json(request.get_json(force=True), telegram_app.bot)
-    await telegram_app.process_update(update)
+
+    asyncio.run(telegram_app.process_update(update))
+
     return "ok"
 
 
 @app.route("/")
 def index():
-    return "🚀 Sukuk Bot Aktif 24 Jam"
+    return "Bot aktif 🚀"
 
 
-# ================= START =================
+telegram_app.add_handler(CommandHandler("start", start))
+telegram_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
 
 if __name__ == "__main__":
-    import asyncio
-
-    async def setup():
-        await telegram_app.initialize()
-        await telegram_app.bot.set_webhook(
-            url=f"https://sukuk-bot-production.up.railway.app/{TOKEN}"
-        )
-
-    asyncio.run(setup())
-
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
-
-
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 8080)))
