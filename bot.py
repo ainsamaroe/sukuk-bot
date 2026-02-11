@@ -1,13 +1,12 @@
 import os
-import json
 from flask import Flask, request
 from telegram import Update
 from telegram.ext import (
     ApplicationBuilder,
     CommandHandler,
     MessageHandler,
-    filters,
     ContextTypes,
+    filters,
 )
 import gspread
 from google.oauth2.service_account import Credentials
@@ -17,16 +16,13 @@ from datetime import datetime
 
 TOKEN = os.getenv("TOKEN")
 SPREADSHEET_ID = os.getenv("SPREADSHEET_ID")
-GOOGLE_CREDENTIALS = os.getenv("GOOGLE_CREDENTIALS")
+PORT = int(os.environ.get("PORT", 10000))
 
 if not TOKEN:
-    raise ValueError("TOKEN tidak ditemukan di environment variables")
+    raise ValueError("TOKEN tidak ditemukan di Environment Variables")
 
 if not SPREADSHEET_ID:
-    raise ValueError("SPREADSHEET_ID tidak ditemukan di environment variables")
-
-if not GOOGLE_CREDENTIALS:
-    raise ValueError("GOOGLE_CREDENTIALS tidak ditemukan di environment variables")
+    raise ValueError("SPREADSHEET_ID tidak ditemukan di Environment Variables")
 
 # ================= FLASK =================
 
@@ -39,10 +35,8 @@ scope = [
     "https://www.googleapis.com/auth/drive",
 ]
 
-creds_dict = json.loads(GOOGLE_CREDENTIALS)
-
-creds = Credentials.from_service_account_info(
-    creds_dict,
+creds = Credentials.from_service_account_file(
+    "credentials.json",
     scopes=scope,
 )
 
@@ -53,8 +47,8 @@ sheet = client.open_by_key(SPREADSHEET_ID).sheet1
 
 telegram_app = ApplicationBuilder().token(TOKEN).build()
 
-# ================= LOGIC =================
 
+# ================= LOGIC =================
 
 def clean_number(text):
     text = str(text).replace("Rp", "").replace(".", "").replace(",", "")
@@ -63,7 +57,7 @@ def clean_number(text):
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "Kirim data seperti:\n\n"
+        "📌 Kirim data seperti:\n\n"
         "PT Nusa, Proyek A, 20-06-2024, 12, 15, 5000000\n\n"
         "Format:\n"
         "Perusahaan, Proyek, Tanggal, Tenor(bulan), ROI(%), Investasi"
@@ -72,9 +66,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
-        perusahaan, proyek, tgl, tenor, roi, investasi = [
-            x.strip() for x in update.message.text.split(",")
-        ]
+        perusahaan, proyek, tgl, tenor, roi, investasi = \
+            [x.strip() for x in update.message.text.split(",")]
 
         tenor = int(tenor)
         roi_value = float(roi) / 100
@@ -91,21 +84,24 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             tenor,
             roi,
             investasi,
-            round(jumlah_sukuk, 2),
-            round(proyeksi_margin, 2),
+            jumlah_sukuk,
+            round(proyeksi_margin, 2)
         ])
 
         await update.message.reply_text("✅ Data berhasil disimpan ke Google Sheets")
 
     except Exception as e:
         print("ERROR:", e)
-        await update.message.reply_text(
-            "❌ Format salah.\n\nContoh:\nPT Nusa, Proyek A, 20-06-2024, 12, 15, 5000000"
-        )
+        await update.message.reply_text("❌ Format salah.\nGunakan format:\nPT Nusa, Proyek A, 20-06-2024, 12, 15, 5000000")
 
 
-# ================= WEBHOOK =================
+# ================= REGISTER HANDLER =================
 
+telegram_app.add_handler(CommandHandler("start", start))
+telegram_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
+
+
+# ================= WEBHOOK ROUTE =================
 
 @app.route(f"/{TOKEN}", methods=["POST"])
 async def webhook():
@@ -116,17 +112,21 @@ async def webhook():
 
 @app.route("/")
 def index():
-    return "Bot aktif 24 jam 🚀"
+    return "🚀 Sukuk Bot Aktif 24 Jam"
 
 
-telegram_app.add_handler(CommandHandler("start", start))
-telegram_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
-
+# ================= START =================
 
 if __name__ == "__main__":
     import asyncio
 
-    asyncio.run(telegram_app.initialize())
-    asyncio.run(telegram_app.start())
+    async def main():
+        await telegram_app.initialize()
+        await telegram_app.start()
+        await telegram_app.bot.set_webhook(
+            url=f"https://{os.getenv('RAILWAY_STATIC_URL')}/{TOKEN}"
+        )
 
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
+    asyncio.run(main())
+
+    app.run(host="0.0.0.0", port=PORT)
